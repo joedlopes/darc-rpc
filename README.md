@@ -324,6 +324,8 @@ If you want to optimize the performance for low RAM use, you can set the *recv_b
 
 Timeouts: you can increase or decrease the timeouts for reception.
 
+As default the *TCP_NODELAY* flag is enabled, in Linux (ubuntu) it made the transmission significantly faster. If you prefre, you can disable it on tcp_client and tcp_server classes.
+
 ```cpp
 
 #include <cstddef>
@@ -399,6 +401,7 @@ To be done in the future:
 - [ ] C# Implementation (for Unity)
 - [ ] Documentation: Protocol Format, Sequence Diagram
 - [ ] Server: multithreading to handle multiple clients
+- [ ] Support UDP sockets
 
 ## d'Arc Framework
 
@@ -410,11 +413,11 @@ If this repository helped you in some research or publication, it would be nice 
 
 ```bibtex
 @misc{jojo2023,
-  author = {da Silva, J. L.},
+  author = {da Silva, Joed Lopes},
   title = {darc-rpc: D'Arc Framework RPC},
   year = {2023},
   howpublished = {\url{https://github.com/joedlopes/darc-rpc}},
-  note = {Accessed: Date}
+  note = {Accessed: 28.10.2023}
 }
 ```
 
