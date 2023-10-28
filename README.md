@@ -1,16 +1,16 @@
-# darc-rpc (d'Arc RPC)
+# darc-rpc (d'Arc RPC) :bow_and_arrow:
 
 Simple, lightweight, cross-platform, header-only, single header RPC written in C++ 11 and TCP sockets.
 
-The main goal of this project is to provide an introduction about network communication, especially TCP sockets, by implementing a simple remote procedure call (RPC) library for cross-platform (Linux :penguin:, macOS, Windows).
+The main goal of this project is to provide an introduction about network communication, especially TCP sockets, by implementing a simple remote procedure call (RPC) library for cross-platform (Linux :penguin: :arch: :ubuntu:, macOS :mac:, Windows :windows:).
 
-Besides this educational purpose, it can be used as interface to communicate with constrainted hardware (embedded systems: Raspyberry Pi, low-power CPU, and MPSoC FPGA), where installing a big RPC library is not ideal. 
+Besides this educational purpose, it can be used as interface to communicate with constrainted hardware (embedded systems: Raspyberry Pi, low-power CPU, and MPSoC FPGA), where installing a big RPC library is not ideal.
 
 Another point is to provide a model like :robot: ROS nodes communication, I love ROS2 :revolving_hearts:, but sometimes I just want a simple publisher/subscriber without installing an entire distribution.
 
 ## Usage
 
-You can use the single header (darc-rcp.hpp) or either use the header separetely. Here, for simplification, I use the single header.
+You can just copy the single header (darc-rcp.hpp) to your project or either use the headers separetely. In the following examples, I use the single header:
 
 ### Define a Serializable message
 
@@ -375,17 +375,18 @@ cd ./examples/
 make
 ```
 
-
 ## Limitations
 
-For simplification, the current implementation is not multi-thread. Therefore, 
-- server and subscriber do not support multiple clients 
-- and they not are prepared to execute multiple methods simultaneously.
+For simplification, the current implementation is not multi-thread. 
+Therefore, 
+- the server/subscriber do not support multiple clients 
+- the server is not prepared to execute multiple methods simultaneously
 
 ## TODO
 
 To be done in the future:
 
+- [ ] Example: remote image processing
 - [ ] rpc_server: support methods with different input and output messages
 - [ ] Python Implementation
 - [ ] C# Implementation (for Unity)
@@ -394,13 +395,13 @@ To be done in the future:
 
 ## d'Arc Framework
 
-*d'Arc*, from Joana d'Arc, is the current **pre**fix for my [frameworks](https://github.com/darc-framework) :)
+*d'Arc*  is the current **pre**fix for my [frameworks](https://github.com/darc-framework) :)
 
 ## Citation
 
 If this repository helped you in some research or publication, it would be nice to have a citation, although not necessary.
 
-```
+```bibtex
 @misc{jojo2023,
   author = {da Silva, J. L.},
   title = {darc-rpc: D'Arc Framework RPC},
