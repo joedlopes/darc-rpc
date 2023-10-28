@@ -317,6 +317,13 @@ int main(int argc, char** argv) {
 
 Before loading "darc-rpc.hpp", you can tune the data sizes according to your project and desired performance.
 
+If you want to transmit data between process in the same machine, you can increase *recv_buffer_size* and *packet_buffer_size* to 60K.
+It will allow you allow to transfer large data (HD Images) in real-time. However, it will increase the RAM usage.
+
+If you want to optimize the performance for low RAM use, you can set the *recv_buffer_size* to 256.
+
+Timeouts: you can increase or decrease the timeouts for reception.
+
 ```cpp
 
 #include <cstddef>
@@ -346,7 +353,7 @@ constexpr size_t packet_buffer_size = recv_buffer_size;
 constexpr size_t msg_buffer_size = 3000 * 3000 * 20;
 
 // Socket buffer size for read and writing
-constexpr int socket_buffer_sizes = msg_buffer_size * 10;
+constexpr int socket_buffer_sizes = msg_buffer_size;
 
 }; };  //cfg // namespace dc
 
