@@ -1,16 +1,16 @@
-# darc-rpc (d'Arc RPC)
+# darc-rpc (d'Arc RPC) :bow_and_arrow:
 
 Simple, lightweight, cross-platform, header-only, single header RPC written in C++ 11 and TCP sockets.
 
-The main goal of this project is to provide an introduction about network communication, especially TCP sockets, by implementing a simple remote procedure call (RPC) library for cross-platform (Linux :penguin:, macOS, Windows).
+The main goal of this project is to provide an introduction about network communication, especially TCP sockets, by implementing a simple remote procedure call (RPC) library for cross-platform (Linux :penguin: :arch: :ubuntu:, macOS :mac:, Windows :windows:).
 
-Besides this educational purpose, it can be used as interface to communicate with constrainted hardware (embedded systems: Raspyberry Pi, low-power CPU, and MPSoC FPGA), where installing a big RPC library is not ideal. 
+Besides this educational purpose, it can be used as interface to communicate with constrainted hardware (embedded systems: Raspyberry Pi, low-power CPU, and MPSoC FPGA), where installing a big RPC library is not ideal.
 
 Another point is to provide a model like :robot: ROS nodes communication, I love ROS2 :revolving_hearts:, but sometimes I just want a simple publisher/subscriber without installing an entire distribution.
 
 ## Usage
 
-You can use the single header (darc-rcp.hpp) or either use the header separetely. Here, for simplification, I use the single header.
+You can just copy the single header (darc-rcp.hpp) to your project or either use the headers separetely. In the following examples, I use the single header:
 
 ### Define a Serializable message
 
@@ -226,7 +226,58 @@ int main(int argc, char* argv[]) {
 
 Non-blocking and blocking modes are avaiable in the dc::tcp_server and dc::tcp_client:
 
-Example of TCP Server (non-blocking):
+Example of TCP Server (non-blocking read with timout):
+```cpp
+#include "darc-rpc.hpp"
+
+int main(int argc, char **argv) {
+  dc::tcp_server server("0.0.0.0", 31311);
+
+  if (!server.listen()) {
+    return 1;
+  }
+
+  while (server.is_active()) {
+    dc::conn_info client;
+    if (server.try_accept(client, 1000) != dc::RET_ACCEPT_SUCCESS) {
+      printf("Waiting client to connect...\n");
+      continue;
+    }
+    printf("New client connected: ");
+    client.print();
+    printf("\n");
+
+    const size_t BUF_SIZE = 255;
+    uint8_t buffer[BUF_SIZE];
+
+    while (server.is_active()) {
+      size_t buf_size = BUF_SIZE;
+      dc::ret_recv res =
+          server.try_recv(client.socket_id, buffer, &buf_size, 1000);
+
+      if (res == dc::RET_RECV_SUCCESS) {
+        printf("RX[0]: %02X\n", buffer[0]);
+        buffer[0] += 1;
+
+        int res = server.send(client.socket_id, buffer, 1);
+        if (res == dc::RET_SEND_FAIL) {
+          printf("Fail to send message\n");
+          break;
+        }
+      } else if (res == dc::RET_RECV_FAIL) {
+        printf("RET_RECV_FAIL\n");
+        break;
+      }
+    }
+  }
+
+  server.close();
+
+  return 0;
+}
+```
+
+Example of TCP Client (non-blocking read):
 ```cpp
 #include "darc-rpc.hpp"
 
@@ -238,25 +289,21 @@ int main(int argc, char** argv) {
   }
 
   const size_t BUF_SIZE = 255;
+  uint8_t buffer[BUF_SIZE];
 
-  std::vector<uint8_t> buffer;
   for (size_t i = 0; i < BUF_SIZE; i++) {
-    buffer.push_back(i % 255);
+    buffer[i] = (i % 255);
   }
 
-  int i = 0;
-  while (client.is_active()) {
-    size_t k = 0;
-
-    for (k = 0; k < (1024 * 1024 / BUF_SIZE); k++) {
-      if (client.send(buffer.data(), buffer.size()) == dc::RET_SEND_SUCCESS) {
-        size_t buf_size = BUF_SIZE;
-        dc::ret_recv res = client.try_recv(buffer.data(), &buf_size, 1000);
-        if (res != dc::RET_RECV_SUCCESS) {
-          break;
-        }
-        printf("rx[0]: %02X\n", buffer[0]);
+  // send 100 messages
+  for (int i = 0; i < 100 && client.is_active(); i++) {
+    if (client.send(buffer, BUF_SIZE) == dc::RET_SEND_SUCCESS) {
+      size_t buf_size = BUF_SIZE;
+      dc::ret_recv res = client.try_recv(buffer, &buf_size, 1000);
+      if (res != dc::RET_RECV_SUCCESS) {
+        break;
       }
+      printf("rx[0]: %02X\n", buffer[0]);
     }
   }
 
@@ -266,48 +313,18 @@ int main(int argc, char** argv) {
 }
 ```
 
-Example of TCP Client (non-blocking):
-```cpp
-#include "darc-rpc.hpp"
-#include "msg_sample.hpp"
-
-int main(int argc, char* argv[]) {
-  const uint16_t M_SUM = 0x0000;
-  const uint16_t M_SUM_SQUARED = 0x0001;
-
-  dc::socket_requirements::init();
-  dc::rpc_client client("0.0.0.0", 31311);
-
-  if (!client.connect()) {
-    return 1;
-  }
-
-  msg_params msg_in;
-  msg_result msg_out;
-
-  msg_in.a = 100;
-  msg_in.b = 200;
-  msg_in.c = 250;
-  if (!client.execute(M_SUM, &msg_in, &msg_out)) {
-    return 1;
-  }
-  printf("sum: %" PRIu16 "\n", msg_out.value);
-
-  msg_in.a = 2;
-  msg_in.b = 4;
-  msg_in.c = 5;
-  if (!client.execute(M_SUM_SQUARED, &msg_in, &msg_out)) {
-    return 1;
-  }
-  printf("sum^2: %" PRIu16 "\n", msg_out.value);
-  // connection will be closed automatically on the destructor of (rpc_client)
-  return 0;
-}
-```
-
 ## Configuration / Defines
 
 Before loading "darc-rpc.hpp", you can tune the data sizes according to your project and desired performance.
+
+If you want to transmit data between process in the same machine, you can increase *recv_buffer_size* and *packet_buffer_size* to 60K.
+It will allow you allow to transfer large data (HD Images) in real-time. However, it will increase the RAM usage.
+
+If you want to optimize the performance for low RAM use, you can set the *recv_buffer_size* to 256.
+
+Timeouts: you can increase or decrease the timeouts for reception.
+
+As default the *TCP_NODELAY* flag is enabled, in Linux (ubuntu) it made the transmission significantly faster. If you prefre, you can disable it on tcp_client and tcp_server classes.
 
 ```cpp
 
@@ -338,7 +355,7 @@ constexpr size_t packet_buffer_size = recv_buffer_size;
 constexpr size_t msg_buffer_size = 3000 * 3000 * 20;
 
 // Socket buffer size for read and writing
-constexpr int socket_buffer_sizes = msg_buffer_size * 10;
+constexpr int socket_buffer_sizes = msg_buffer_size;
 
 }; };  //cfg // namespace dc
 
@@ -367,38 +384,40 @@ cd ./examples/
 make
 ```
 
-
 ## Limitations
 
-For simplification, the current implementation is not multi-thread. Therefore, 
-- server and subscriber do not support multiple clients 
-- and they not are prepared to execute multiple methods simultaneously.
+For simplification, the current implementation is not multi-thread. 
+Therefore, 
+- the server/subscriber do not support multiple clients 
+- the server is not prepared to execute multiple methods simultaneously
 
 ## TODO
 
 To be done in the future:
 
+- [ ] Example: remote image processing
 - [ ] rpc_server: support methods with different input and output messages
 - [ ] Python Implementation
 - [ ] C# Implementation (for Unity)
 - [ ] Documentation: Protocol Format, Sequence Diagram
 - [ ] Server: multithreading to handle multiple clients
+- [ ] Support UDP sockets
 
 ## d'Arc Framework
 
-*d'Arc*, from Joana d'Arc, is the current **pre**fix for my [frameworks](https://github.com/darc-framework) :)
+*d'Arc*  is the current **pre**fix for my [frameworks](https://github.com/darc-framework) :)
 
 ## Citation
 
 If this repository helped you in some research or publication, it would be nice to have a citation, although not necessary.
 
-```
+```bibtex
 @misc{jojo2023,
-  author = {da Silva, J. L.},
+  author = {da Silva, Joed Lopes},
   title = {darc-rpc: D'Arc Framework RPC},
   year = {2023},
   howpublished = {\url{https://github.com/joedlopes/darc-rpc}},
-  note = {Accessed: Date}
+  note = {Accessed: 28.10.2023}
 }
 ```
 
