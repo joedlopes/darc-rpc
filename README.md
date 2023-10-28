@@ -226,7 +226,58 @@ int main(int argc, char* argv[]) {
 
 Non-blocking and blocking modes are avaiable in the dc::tcp_server and dc::tcp_client:
 
-Example of TCP Server (non-blocking):
+Example of TCP Server (non-blocking read with timout):
+```cpp
+#include "darc-rpc.hpp"
+
+int main(int argc, char **argv) {
+  dc::tcp_server server("0.0.0.0", 31311);
+
+  if (!server.listen()) {
+    return 1;
+  }
+
+  while (server.is_active()) {
+    dc::conn_info client;
+    if (server.try_accept(client, 1000) != dc::RET_ACCEPT_SUCCESS) {
+      printf("Waiting client to connect...\n");
+      continue;
+    }
+    printf("New client connected: ");
+    client.print();
+    printf("\n");
+
+    const size_t BUF_SIZE = 255;
+    uint8_t buffer[BUF_SIZE];
+
+    while (server.is_active()) {
+      size_t buf_size = BUF_SIZE;
+      dc::ret_recv res =
+          server.try_recv(client.socket_id, buffer, &buf_size, 1000);
+
+      if (res == dc::RET_RECV_SUCCESS) {
+        printf("RX[0]: %02X\n", buffer[0]);
+        buffer[0] += 1;
+
+        int res = server.send(client.socket_id, buffer, 1);
+        if (res == dc::RET_SEND_FAIL) {
+          printf("Fail to send message\n");
+          break;
+        }
+      } else if (res == dc::RET_RECV_FAIL) {
+        printf("RET_RECV_FAIL\n");
+        break;
+      }
+    }
+  }
+
+  server.close();
+
+  return 0;
+}
+```
+
+Example of TCP Client (non-blocking read):
 ```cpp
 #include "darc-rpc.hpp"
 
@@ -238,69 +289,26 @@ int main(int argc, char** argv) {
   }
 
   const size_t BUF_SIZE = 255;
+  uint8_t buffer[BUF_SIZE];
 
-  std::vector<uint8_t> buffer;
   for (size_t i = 0; i < BUF_SIZE; i++) {
-    buffer.push_back(i % 255);
+    buffer[i] = (i % 255);
   }
 
-  int i = 0;
-  while (client.is_active()) {
-    size_t k = 0;
-
-    for (k = 0; k < (1024 * 1024 / BUF_SIZE); k++) {
-      if (client.send(buffer.data(), buffer.size()) == dc::RET_SEND_SUCCESS) {
-        size_t buf_size = BUF_SIZE;
-        dc::ret_recv res = client.try_recv(buffer.data(), &buf_size, 1000);
-        if (res != dc::RET_RECV_SUCCESS) {
-          break;
-        }
-        printf("rx[0]: %02X\n", buffer[0]);
+  // send 100 messages
+  for (int i = 0; i < 100 && client.is_active(); i++) {
+    if (client.send(buffer, BUF_SIZE) == dc::RET_SEND_SUCCESS) {
+      size_t buf_size = BUF_SIZE;
+      dc::ret_recv res = client.try_recv(buffer, &buf_size, 1000);
+      if (res != dc::RET_RECV_SUCCESS) {
+        break;
       }
+      printf("rx[0]: %02X\n", buffer[0]);
     }
   }
 
   client.close();
 
-  return 0;
-}
-```
-
-Example of TCP Client (non-blocking):
-```cpp
-#include "darc-rpc.hpp"
-#include "msg_sample.hpp"
-
-int main(int argc, char* argv[]) {
-  const uint16_t M_SUM = 0x0000;
-  const uint16_t M_SUM_SQUARED = 0x0001;
-
-  dc::socket_requirements::init();
-  dc::rpc_client client("0.0.0.0", 31311);
-
-  if (!client.connect()) {
-    return 1;
-  }
-
-  msg_params msg_in;
-  msg_result msg_out;
-
-  msg_in.a = 100;
-  msg_in.b = 200;
-  msg_in.c = 250;
-  if (!client.execute(M_SUM, &msg_in, &msg_out)) {
-    return 1;
-  }
-  printf("sum: %" PRIu16 "\n", msg_out.value);
-
-  msg_in.a = 2;
-  msg_in.b = 4;
-  msg_in.c = 5;
-  if (!client.execute(M_SUM_SQUARED, &msg_in, &msg_out)) {
-    return 1;
-  }
-  printf("sum^2: %" PRIu16 "\n", msg_out.value);
-  // connection will be closed automatically on the destructor of (rpc_client)
   return 0;
 }
 ```

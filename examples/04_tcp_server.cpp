@@ -26,6 +26,7 @@ int main(int argc, char **argv) {
           server.try_recv(client.socket_id, buffer, &buf_size, 1000);
 
       if (res == dc::RET_RECV_SUCCESS) {
+        printf("RX[0]: %02X\n", buffer[0]);
         buffer[0] += 1;
 
         int res = server.send(client.socket_id, buffer, 1);
