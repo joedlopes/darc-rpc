@@ -313,6 +313,12 @@ int main(int argc, char** argv) {
 }
 ```
 
+### Example for remote image processing or large files
+
+[01. Image Processing RPC Server and RCP Client](examples/remote_image_processing/README.md)
+
+
+
 ## Configuration / Defines
 
 Before loading "darc-rpc.hpp", you can tune the data sizes according to your project and desired performance.
