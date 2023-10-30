@@ -2,7 +2,7 @@
 
 Simple, lightweight, cross-platform, header-only, single header RPC written in C++ 11 and TCP sockets.
 
-The main goal of this project is to provide an introduction about network communication, especially TCP sockets, by implementing a simple remote procedure call (RPC) library for cross-platform (Linux :penguin: :arch: :ubuntu:, macOS :mac:, Windows :windows:).
+The main goal of this project is to provide an introduction about network communication, especially TCP sockets, by implementing a simple remote procedure call (RPC) library for cross-platform (Linux :penguin:, macOS, Windows).
 
 Besides this educational purpose, it can be used as interface to communicate with constrainted hardware (embedded systems: Raspyberry Pi, low-power CPU, and MPSoC FPGA), where installing a big RPC library is not ideal.
 
