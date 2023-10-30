@@ -95,17 +95,17 @@ const bool print_msg_frag = false;
 
 const bool print_rx_packets = false;
 
-const int timeout_recv = 100;
+const int timeout_recv = 1000;
 
-const int timeout_accept = 100;
+const int timeout_accept = 1000;
 
-const size_t recv_buffer_size = 1024 * 50;
+const size_t recv_buffer_size = 1024;
 
 constexpr size_t packet_buffer_size = recv_buffer_size - 22;
 
-constexpr size_t msg_buffer_size = 3000 * 3000 * 20;
+constexpr size_t msg_buffer_size = 2536 * 2080 * 4;
 
-constexpr int socket_buffer_sizes = msg_buffer_size * 10;
+constexpr int socket_buffer_sizes = msg_buffer_size;
 
 };  // namespace cfg
 
@@ -114,17 +114,17 @@ constexpr int socket_buffer_sizes = msg_buffer_size * 10;
 // Utils functions for buffer writing and read and time profiling
 // -----------------------------------------------------------------------------
 
-uint32_t bytes_to_u32(const uint8_t *ptr) {
+uint32_t bytes_to_u32(const uint8_t* ptr) {
   return static_cast<uint32_t>(ptr[0]) | (static_cast<uint32_t>(ptr[1]) << 8) |
          (static_cast<uint32_t>(ptr[2]) << 16) |
          (static_cast<uint32_t>(ptr[3]) << 24);
 }
 
-uint16_t bytes_to_u16(const uint8_t *ptr) {
+uint16_t bytes_to_u16(const uint8_t* ptr) {
   return static_cast<uint32_t>(ptr[0]) | (static_cast<uint32_t>(ptr[1]) << 8);
 }
 
-uint8_t *buffer_write_u32(uint8_t *buffer, const uint32_t value) {
+uint8_t* buffer_write_u32(uint8_t* buffer, const uint32_t value) {
   buffer[0] = static_cast<uint8_t>(value);
   buffer[1] = static_cast<uint8_t>(value >> 8);
   buffer[2] = static_cast<uint8_t>(value >> 16);
@@ -132,18 +132,18 @@ uint8_t *buffer_write_u32(uint8_t *buffer, const uint32_t value) {
   return buffer + sizeof(uint32_t);
 }
 
-uint8_t *buffer_write_u16(uint8_t *buffer, const uint16_t value) {
+uint8_t* buffer_write_u16(uint8_t* buffer, const uint16_t value) {
   buffer[0] = static_cast<uint8_t>(value);
   buffer[1] = static_cast<uint8_t>(value >> 8);
   return buffer + sizeof(uint16_t);
 }
 
-uint8_t *buffer_write_u8(uint8_t *buffer, const uint8_t value) {
+uint8_t* buffer_write_u8(uint8_t* buffer, const uint8_t value) {
   buffer[0] = value;
   return buffer + sizeof(uint8_t);
 }
 
-uint8_t *buffer_write_u8vec(uint8_t *buffer, const uint8_t *data,
+uint8_t* buffer_write_u8vec(uint8_t* buffer, const uint8_t* data,
                             const size_t size) {
   std::memcpy(buffer, data, size);
   return buffer + size;
@@ -181,7 +181,7 @@ class socket_requirements {
   }
   ~socket_requirements() { clean_up(); }
   void clean_up() { WSACleanup(); }
-  static socket_requirements &init() {
+  static socket_requirements& init() {
     static socket_requirements instance;
     return instance;
   }
@@ -195,7 +195,7 @@ class socket_requirements {
   socket_requirements() {}
   ~socket_requirements() {}
   void clean_up() {}
-  static socket_requirements &init() {
+  static socket_requirements& init() {
     static socket_requirements instance;
     return instance;
   }
@@ -232,12 +232,12 @@ struct conn_info {
     std::memset(address, 0, INET_ADDRSTRLEN);
   }
 
-  conn_info(SOCKET socket_id_, const char *address_, uint16_t port_)
+  conn_info(SOCKET socket_id_, const char* address_, uint16_t port_)
       : socket_id(socket_id_), port(port_) {
     std::memcpy(address, address_, INET_ADDRSTRLEN);
   }
 
-  conn_info(const conn_info &other)
+  conn_info(const conn_info& other)
       : socket_id(other.socket_id), port(other.port) {
     std::memcpy(address, other.address, INET_ADDRSTRLEN);
   }
@@ -251,11 +251,11 @@ struct conn_info {
 
 class socket_transceiver {
  public:
-  virtual ret_recv recv(SOCKET socket_id, uint8_t *buffer,
-                        size_t *buf_size) = 0;
-  virtual ret_recv try_recv(SOCKET socket_id, uint8_t *buffer, size_t *buf_size,
+  virtual ret_recv recv(SOCKET socket_id, uint8_t* buffer,
+                        size_t* buf_size) = 0;
+  virtual ret_recv try_recv(SOCKET socket_id, uint8_t* buffer, size_t* buf_size,
                             const int timeout_millis) = 0;
-  virtual ret_send send(SOCKET socket_id, const uint8_t *buffer,
+  virtual ret_send send(SOCKET socket_id, const uint8_t* buffer,
                         size_t buf_size) = 0;
 
   virtual bool is_socket_active(SOCKET socket_id) = 0;
@@ -267,7 +267,7 @@ class socket_transceiver {
 
 class tcp_client : public socket_transceiver {
  public:
-  tcp_client(const char *server_address, uint16_t port)
+  tcp_client(const char* server_address, uint16_t port)
       : conn_(0, server_address, port) {}
 
   ~tcp_client() { close(); }
@@ -283,22 +283,60 @@ class tcp_client : public socket_transceiver {
       return false;
     }
 
-    int flag = 1;
-    setsockopt(conn_.socket_id, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int));
-
-    int send_buffer_size = cfg::socket_buffer_sizes;
-    if (setsockopt(conn_.socket_id, SOL_SOCKET, SO_SNDBUF, &send_buffer_size,
-                   sizeof(send_buffer_size)) == -1) {
-      ::close(conn_.socket_id);
+#if _WIN32
+    char flag = 1;
+    if (setsockopt(conn_.socket_id, IPPROTO_TCP, TCP_NODELAY, &flag,
+                   sizeof(char)) == -1) {
+      fprintf(stderr, "[tcp_client] error: fail to set option TCP_NODELAY\n");
+      close();
       return false;
     }
 
-    int receive_buffer_size = cfg::socket_buffer_sizes;
-    if (setsockopt(conn_.socket_id, SOL_SOCKET, SO_RCVBUF, &receive_buffer_size,
-                   sizeof(receive_buffer_size)) == -1) {
-      ::close(conn_.socket_id);
+    const int txrx_buffer = cfg::socket_buffer_sizes;
+    if (setsockopt(conn_.socket_id, SOL_SOCKET, SO_SNDBUF,
+                   reinterpret_cast<const char*>(&txrx_buffer),
+                   sizeof(txrx_buffer)) == -1) {
+      fprintf(stderr,
+              "[tcp_client] error: fail to set socket tx buffer size\n");
+      close();
+      return false;
+    }
+
+    if (setsockopt(conn_.socket_id, SOL_SOCKET, SO_RCVBUF,
+                   reinterpret_cast<const char*>(&txrx_buffer),
+                   sizeof(txrx_buffer)) == -1) {
+      fprintf(stderr,
+              "[tcp_client] error: fail to set socket rx buffer size\n");
+      close();
       return 1;
     }
+
+#else
+    int flag = 1;
+    if (setsockopt(conn_.socket_id, IPPROTO_TCP, TCP_NODELAY, &flag,
+                   sizeof(int)) == -1) {
+      fprintf(stderr, "[tcp_client] error: fail to set option TCP_NODELAY\n");
+      close();
+      return false;
+    }
+
+    const int txrx_buffer = cfg::socket_buffer_sizes;
+    if (setsockopt(conn_.socket_id, SOL_SOCKET, SO_SNDBUF, &txrx_buffer,
+                   sizeof(txrx_buffer)) == -1) {
+      fprintf(stderr,
+              "[tcp_client] error: fail to set socket tx buffer size\n");
+      close();
+      return false;
+    }
+    int receive_buffer_size = cfg::socket_buffer_sizes;
+    if (setsockopt(conn_.socket_id, SOL_SOCKET, SO_RCVBUF, &txrx_buffer,
+                   sizeof(txrx_buffer)) == -1) {
+      fprintf(stderr,
+              "[tcp_client] error: fail to set socket rx buffer size\n");
+      close();
+      return 1;
+    }
+#endif
 
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
@@ -311,7 +349,7 @@ class tcp_client : public socket_transceiver {
       return false;
     }
 
-    if (::connect(conn_.socket_id, (struct sockaddr *)&server_addr,
+    if (::connect(conn_.socket_id, (struct sockaddr*)&server_addr,
                   sizeof(server_addr)) != 0) {
       fprintf(stderr, "[tcp_client] error: failed to connect\n");
       return false;
@@ -334,12 +372,12 @@ class tcp_client : public socket_transceiver {
     return false;
   }
 
-  ret_send send(const uint8_t *buffer, size_t buf_size) {
+  ret_send send(const uint8_t* buffer, size_t buf_size) {
     if (cfg::print_msg_frag) printf("[tcp_client] send: %zu\n", buf_size);
 
 #if _WIN32
     int res;
-    res = ::send(conn_.socket_id, reinterpret_cast<const char *>(buffer),
+    res = ::send(conn_.socket_id, reinterpret_cast<const char*>(buffer),
                  static_cast<int>(buf_size), 0);
 #else
     ssize_t res;
@@ -358,12 +396,12 @@ class tcp_client : public socket_transceiver {
     return RET_SEND_SUCCESS;
   }
 
-  ret_recv recv(uint8_t *buffer, size_t *buf_size) {
+  ret_recv recv(uint8_t* buffer, size_t* buf_size) {
     if (cfg::print_msg_frag) printf("[tcp_client] recv: %zu\n", *buf_size);
 
 #if _WIN32
     int res;
-    res = ::recv(conn_.socket_id, reinterpret_cast<char *>(buffer),
+    res = ::recv(conn_.socket_id, reinterpret_cast<char*>(buffer),
                  static_cast<int>(*buf_size), 0);
 #else
     ssize_t res;
@@ -381,7 +419,7 @@ class tcp_client : public socket_transceiver {
     return RET_RECV_SUCCESS;
   }
 
-  ret_recv try_recv(uint8_t *buffer, size_t *buf_size,
+  ret_recv try_recv(uint8_t* buffer, size_t* buf_size,
                     const int timeout_millis) {
 #ifdef _WIN32
     WSAPOLLFD fds = {};
@@ -406,23 +444,23 @@ class tcp_client : public socket_transceiver {
 
   inline virtual bool is_active() override { return conn_.socket_id > 0; }
 
-  inline conn_info &connection_info() { return conn_; }
+  inline conn_info& connection_info() { return conn_; }
 
   // socket_transceiver -> client ignores socket_id and default socket
 
-  virtual ret_recv recv(SOCKET socket_id, uint8_t *buffer,
-                        size_t *buf_size) override {
+  virtual ret_recv recv(SOCKET socket_id, uint8_t* buffer,
+                        size_t* buf_size) override {
     (void)(socket_id);
     return recv(buffer, buf_size);
   }
 
-  virtual ret_recv try_recv(SOCKET socket_id, uint8_t *buffer, size_t *buf_size,
+  virtual ret_recv try_recv(SOCKET socket_id, uint8_t* buffer, size_t* buf_size,
                             const int timeout_millis) override {
     (void)(socket_id);
     return try_recv(buffer, buf_size, timeout_millis);
   }
 
-  virtual ret_send send(SOCKET socket_id, const uint8_t *buffer,
+  virtual ret_send send(SOCKET socket_id, const uint8_t* buffer,
                         size_t buf_size) override {
     (void)(socket_id);
     return send(buffer, buf_size);
@@ -441,14 +479,14 @@ class tcp_client : public socket_transceiver {
 
 class tcp_server : public socket_transceiver {
  public:
-  tcp_server(const char *address, uint16_t port) : conn_(0, address, port) {}
+  tcp_server(const char* address, uint16_t port) : conn_(0, address, port) {}
 
   ~tcp_server() { close(); }
 
   bool close() {
     if (is_active()) {
       {  // disconnect clients
-        for (auto &client : clients_) {
+        for (auto& client : clients_) {
           shutdown(client.socket_id, SHUT_RDWR);
 
 #ifdef _WIN32
@@ -486,36 +524,76 @@ class tcp_server : public socket_transceiver {
       return false;
     }
 
-    int flag = 1;
-    setsockopt(conn_.socket_id, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int));
-
-    int send_buffer_size = cfg::socket_buffer_sizes;
-    if (setsockopt(conn_.socket_id, SOL_SOCKET, SO_SNDBUF, &send_buffer_size,
-                   sizeof(send_buffer_size)) == -1) {
-      ::close(conn_.socket_id);
+#if _WIN32
+    char flag = 1;
+    if (setsockopt(conn_.socket_id, IPPROTO_TCP, TCP_NODELAY, &flag,
+                   sizeof(char)) == -1) {
+      fprintf(stderr, "[tcp_client] error: fail to set option TCP_NODELAY\n");
+      close();
       return false;
     }
 
-    int receive_buffer_size = cfg::socket_buffer_sizes;
-    if (setsockopt(conn_.socket_id, SOL_SOCKET, SO_RCVBUF, &receive_buffer_size,
-                   sizeof(receive_buffer_size)) == -1) {
-      ::close(conn_.socket_id);
+    const int txrx_buffer = cfg::socket_buffer_sizes;
+    if (setsockopt(conn_.socket_id, SOL_SOCKET, SO_SNDBUF,
+                   reinterpret_cast<const char*>(&txrx_buffer),
+                   sizeof(txrx_buffer)) == -1) {
+      fprintf(stderr,
+              "[tcp_client] error: fail to set socket tx buffer size\n");
+      close();
+      return false;
+    }
+
+    if (setsockopt(conn_.socket_id, SOL_SOCKET, SO_RCVBUF,
+                   reinterpret_cast<const char*>(&txrx_buffer),
+                   sizeof(txrx_buffer)) == -1) {
+      fprintf(stderr,
+              "[tcp_client] error: fail to set socket rx buffer size\n");
+      close();
       return 1;
     }
 
-#ifdef _WIN32
-    const char reuse = 1;
-    if (setsockopt(conn_.socket_id, SOL_SOCKET, SO_REUSEADDR, &reuse,
-                   sizeof(reuse)) < 0) {
-#else
     const int reuse = 1;
-    if (setsockopt(conn_.socket_id, SOL_SOCKET, SO_REUSEADDR, &reuse,
-                   sizeof(reuse)) < 0) {
-#endif
+    if (setsockopt(conn_.socket_id, SOL_SOCKET, SO_REUSEADDR,
+                   reinterpret_cast<const char*>(&reuse), sizeof(int)) < 0) {
       fprintf(stderr, "[tpc_server] error: fail to set SO_REUSEADDR to 1\n");
       close();
       return false;
     }
+
+#else
+    int flag = 1;
+    if (setsockopt(conn_.socket_id, IPPROTO_TCP, TCP_NODELAY, &flag,
+                   sizeof(int)) == -1) {
+      fprintf(stderr, "[tcp_client] error: fail to set option TCP_NODELAY\n");
+      close();
+      return false;
+    }
+
+    const int txrx_buffer = cfg::socket_buffer_sizes;
+    if (setsockopt(conn_.socket_id, SOL_SOCKET, SO_SNDBUF, &txrx_buffer,
+                   sizeof(txrx_buffer)) == -1) {
+      fprintf(stderr,
+              "[tcp_client] error: fail to set socket tx buffer size\n");
+      close();
+      return false;
+    }
+    int receive_buffer_size = cfg::socket_buffer_sizes;
+    if (setsockopt(conn_.socket_id, SOL_SOCKET, SO_RCVBUF, &txrx_buffer,
+                   sizeof(txrx_buffer)) == -1) {
+      fprintf(stderr,
+              "[tcp_client] error: fail to set socket rx buffer size\n");
+      close();
+      return 1;
+    }
+
+    const int reuse = 1;
+    if (setsockopt(conn_.socket_id, SOL_SOCKET, SO_REUSEADDR, &reuse,
+                   sizeof(reuse)) < 0) {
+      fprintf(stderr, "[tpc_server] error: fail to set SO_REUSEADDR to 1\n");
+      close();
+      return false;
+    }
+#endif
 
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
@@ -529,7 +607,7 @@ class tcp_server : public socket_transceiver {
       return false;
     }
 
-    if (::bind(conn_.socket_id, (struct sockaddr *)&server_addr,
+    if (::bind(conn_.socket_id, (struct sockaddr*)&server_addr,
                sizeof(server_addr)) == -1) {
       fprintf(stderr, "[tpc_server] Bind failed\n");
       return false;
@@ -545,7 +623,7 @@ class tcp_server : public socket_transceiver {
 
   inline virtual bool is_active() override { return conn_.socket_id > 0; }
 
-  ret_accept accept(conn_info &client) {
+  ret_accept accept(conn_info& client) {
     if (!is_active()) {
       return RET_ACCEPT_FAIL;
     }
@@ -553,7 +631,7 @@ class tcp_server : public socket_transceiver {
     struct sockaddr_in client_addr;
     socklen_t addr_len = sizeof(client_addr);
     SOCKET client_socket =
-        ::accept(conn_.socket_id, (struct sockaddr *)&client_addr, &addr_len);
+        ::accept(conn_.socket_id, (struct sockaddr*)&client_addr, &addr_len);
 
     if (client_socket == -1) {
       fprintf(stderr, "[tpc_server] error: fail to accept client\n");
@@ -574,7 +652,7 @@ class tcp_server : public socket_transceiver {
     return RET_ACCEPT_SUCCESS;
   }
 
-  ret_accept try_accept(conn_info &client, const int timeout_millis) {
+  ret_accept try_accept(conn_info& client, const int timeout_millis) {
     if (!is_active()) {
       return RET_ACCEPT_FAIL;
     }
@@ -596,6 +674,8 @@ class tcp_server : public socket_transceiver {
 #endif
 
       return accept(client);
+    } else if (ready > 0 && (fds.revents & POLLERR)) {
+      return RET_ACCEPT_FAIL;
     }
 
     return RET_ACCEPT_TIMEOUT;
@@ -603,13 +683,13 @@ class tcp_server : public socket_transceiver {
 
   std::vector<conn_info> clients() { return clients_; }
 
-  virtual ret_send send(SOCKET socket_id, const uint8_t *buffer,
+  virtual ret_send send(SOCKET socket_id, const uint8_t* buffer,
                         size_t buf_size) override {
     if (cfg::print_msg_frag) printf("[tpc_server] send: %zu\n", buf_size);
 
 #if _WIN32
     int res;
-    res = ::send(socket_id, reinterpret_cast<const char *>(buffer),
+    res = ::send(socket_id, reinterpret_cast<const char*>(buffer),
                  static_cast<int>(buf_size), 0);
 #else
     ssize_t res;
@@ -629,17 +709,17 @@ class tcp_server : public socket_transceiver {
     return RET_SEND_SUCCESS;
   }
 
-  inline ret_send send(const conn_info &client, const uint8_t *buffer,
+  inline ret_send send(const conn_info& client, const uint8_t* buffer,
                        size_t buf_size) {
     return this->send(client.socket_id, buffer, buf_size);
   }
 
-  virtual ret_recv recv(SOCKET socket_id, uint8_t *buffer,
-                        size_t *buf_size) override {
+  virtual ret_recv recv(SOCKET socket_id, uint8_t* buffer,
+                        size_t* buf_size) override {
     if (cfg::print_msg_frag) printf("[tpc_server] recv: %zu\n", *buf_size);
 
 #if _WIN32
-    int res = ::recv(socket_id, reinterpret_cast<char *>(buffer),
+    int res = ::recv(socket_id, reinterpret_cast<char*>(buffer),
                      static_cast<int>(*buf_size), 0);
 #else
     ssize_t res = ::recv(socket_id, buffer, *buf_size, 0);
@@ -656,33 +736,39 @@ class tcp_server : public socket_transceiver {
     return RET_RECV_SUCCESS;
   }
 
-  inline ret_recv recv(const conn_info &client, uint8_t *buffer,
-                       size_t *buf_size) {
+  inline ret_recv recv(const conn_info& client, uint8_t* buffer,
+                       size_t* buf_size) {
     return recv(client.socket_id, buffer, buf_size);
   }
 
-  virtual ret_recv try_recv(SOCKET socket_id, uint8_t *buffer, size_t *buf_size,
+  virtual ret_recv try_recv(SOCKET socket_id, uint8_t* buffer, size_t* buf_size,
                             const int timeout_millis) override {
 #ifdef _WIN32
     WSAPOLLFD fds{};
     fds.fd = socket_id;
-    fds.events = POLLRDNORM;
+    fds.events = POLLIN;
     int ready = WSAPoll(&fds, 1, timeout_millis);
+    if (false || ready > 0 && (fds.revents & POLLIN)) {
+      return recv(socket_id, buffer, buf_size);
+    }
 #else
     struct pollfd fds;
     fds.fd = socket_id;
-    fds.events = POLLRDNORM;
+    fds.events = POLLIN;
     fds.revents = 0;
     int ready = poll(&fds, 1, timeout_millis);
-#endif
-    if (false || ready > 0 && (fds.revents & POLLRDNORM)) {
+    if (false || ready > 0 && (fds.revents & POLLIN)) {
       return recv(socket_id, buffer, buf_size);
+    }
+#endif
+    if (ready > 0 && (fds.revents & POLLERR)) {
+      return RET_RECV_FAIL;
     }
     return RET_RECV_TIMEOUT;
   }
 
-  inline ret_recv try_recv(const conn_info &client, uint8_t *buffer,
-                           size_t *buf_size, const int timeout_millis) {
+  inline ret_recv try_recv(const conn_info& client, uint8_t* buffer,
+                           size_t* buf_size, const int timeout_millis) {
     return try_recv(client.socket_id, buffer, buf_size, timeout_millis);
   }
 
@@ -711,7 +797,7 @@ class tcp_server : public socket_transceiver {
     return false;
   }
 
-  bool is_client_active(const conn_info &client) {
+  bool is_client_active(const conn_info& client) {
     for (size_t i = 0; i < clients_.size(); i++) {
       if (clients_[i].socket_id == client.socket_id) {
         return true;
@@ -720,7 +806,7 @@ class tcp_server : public socket_transceiver {
     return false;
   }
 
-  inline bool disconnect_client(const conn_info &client) {
+  inline bool disconnect_client(const conn_info& client) {
     return disconnect_client(client.socket_id);
   }
 
@@ -728,11 +814,27 @@ class tcp_server : public socket_transceiver {
 
   inline std::vector<conn_info> connected_clients() { return clients_; }
 
-  inline conn_info &connection_info() { return conn_; }
+  inline conn_info& connection_info() { return conn_; }
 
   virtual bool is_socket_active(SOCKET socket_id) override {
     for (size_t i = 0; i < clients_.size(); i++) {
       if (clients_[i].socket_id == socket_id) {
+#ifdef _WIN32
+        WSAPOLLFD fds{};
+        fds.fd = socket_id;
+        fds.events = POLLERR;
+        fds.revents = 0;
+        int ready = WSAPoll(&fds, 1, 1);
+#else
+        struct pollfd fds;
+        fds.fd = socket_id;
+        fds.events = POLLERR;
+        fds.revents = 0;
+        int ready = poll(&fds, 1, 1);
+#endif
+        if (ready > 0 && (fds.revents & POLLERR)) {
+          return false;
+        }
         return true;
       }
     }
@@ -740,7 +842,7 @@ class tcp_server : public socket_transceiver {
   }
 
  private:
-  void on_client_connected(SOCKET socket_id, const char *address,
+  void on_client_connected(SOCKET socket_id, const char* address,
                            uint16_t port) {
     clients_.push_back(conn_info(socket_id, address, port));
   }
@@ -755,7 +857,7 @@ class tcp_server : public socket_transceiver {
 struct rpc_frag {
   const size_t max_size;
 
-  uint8_t *buffer;
+  uint8_t* buffer;
   size_t buffer_size;
 
   rpc_frag(size_t max_buffer_size) : buffer_size(0), max_size(max_buffer_size) {
@@ -803,7 +905,7 @@ class packet_builder {
   }
 
   inline const size_t size() { return tx_size; }
-  inline const uint8_t *buffer() { return tx_buf; }
+  inline const uint8_t* buffer() { return tx_buf; }
 
   void print_buffer() {
     printf("TX: ");
@@ -816,7 +918,7 @@ class packet_builder {
   // [size:2][cmd:1][method:2][crc:4]
   //    9
   void req_exec_func(const uint16_t method) {
-    uint8_t *ptr =
+    uint8_t* ptr =
         buffer_write_u8(tx_buf + sizeof(uint16_t), command::REQ_EXEC_FUNC);
     ptr = buffer_write_u16(ptr, method);
     build_end(ptr);
@@ -825,7 +927,7 @@ class packet_builder {
   // [size:2][cmd:1][method:2][result:1][crc:4]
   //    10
   void rep_exec_func(const uint16_t method, const uint8_t result) {
-    uint8_t *ptr =
+    uint8_t* ptr =
         buffer_write_u8(tx_buf + sizeof(uint16_t), command::REP_EXEC_FUNC);
     ptr = buffer_write_u16(ptr, method);
     ptr = buffer_write_u8(ptr, result);
@@ -834,7 +936,7 @@ class packet_builder {
 
   void req_send_input(const uint16_t method, const uint32_t file_pos,
                       const uint32_t file_size, const uint16_t buffer_size,
-                      const uint8_t *buffer) {
+                      const uint8_t* buffer) {
     build_data_packet_req(command::REQ_SEND_INPUT, method, file_pos, file_size,
                           buffer_size, buffer);
   }
@@ -848,7 +950,7 @@ class packet_builder {
 
   void req_send_output(const uint16_t method, const uint32_t file_pos,
                        const uint32_t file_size, const uint16_t buffer_size,
-                       const uint8_t *buffer) {
+                       const uint8_t* buffer) {
     build_data_packet_req(command::REQ_SEND_OUTPUT, method, file_pos, file_size,
                           static_cast<uint16_t>(buffer_size), buffer);
   }
@@ -865,8 +967,8 @@ class packet_builder {
   void build_data_packet_req(const uint8_t cmd, const uint16_t method,
                              const uint32_t file_pos, const uint32_t file_size,
                              const uint16_t buffer_size,
-                             const uint8_t *buffer) {
-    uint8_t *ptr = buffer_write_u8(tx_buf + sizeof(uint16_t), cmd);
+                             const uint8_t* buffer) {
+    uint8_t* ptr = buffer_write_u8(tx_buf + sizeof(uint16_t), cmd);
     ptr = buffer_write_u16(ptr, method);
     ptr = buffer_write_u32(ptr, file_pos);
     ptr = buffer_write_u32(ptr, file_size);
@@ -880,7 +982,7 @@ class packet_builder {
   void build_data_packet_rep(const uint8_t cmd, const uint16_t method,
                              const uint32_t file_pos, const uint32_t file_size,
                              const uint16_t buffer_size, const uint8_t result) {
-    uint8_t *ptr = buffer_write_u8(tx_buf + sizeof(uint16_t), cmd);
+    uint8_t* ptr = buffer_write_u8(tx_buf + sizeof(uint16_t), cmd);
     ptr = buffer_write_u16(ptr, method);
     ptr = buffer_write_u32(ptr, file_pos);
     ptr = buffer_write_u32(ptr, file_size);
@@ -890,7 +992,7 @@ class packet_builder {
   }
 
   // build end: compute crc and set tx size
-  void build_end(uint8_t *ptr) {
+  void build_end(uint8_t* ptr) {
     ptr = buffer_write_u32(ptr, 0xB4B3B2B1);  // crc
     tx_size = ptr - tx_buf;
     buffer_write_u16(tx_buf, static_cast<uint16_t>(tx_size));
@@ -906,7 +1008,7 @@ class packet_parser {
   uint8_t rx_buf[cfg::packet_buffer_size];
   size_t rx_size;
 
-  void recv_data(const uint8_t *buffer, const size_t size) {
+  void recv_data(const uint8_t* buffer, const size_t size) {
     std::memcpy(rx_buf, buffer, size);
     rx_size = size;
   }
@@ -928,7 +1030,7 @@ class packet_parser {
   uint32_t file_size_;
   uint16_t buffer_size_;
 
-  const uint8_t *buffer_;
+  const uint8_t* buffer_;
 
  public:
   uint16_t size() { return size_; }
@@ -945,14 +1047,14 @@ class packet_parser {
   uint32_t file_pos() { return file_pos_; }
   uint32_t file_size() { return file_size_; }
   uint16_t buffer_size() { return buffer_size_; }
-  const uint8_t *buffer() { return buffer_; }
+  const uint8_t* buffer() { return buffer_; }
 
   void print() {
-    const char *STR_CMD[] = {
+    const char* STR_CMD[] = {
         "UNKNOWN",        "REQ_EXEC_FUNC",   "REP_EXEC_FUNC",  "REQ_SEND_INPUT",
         "REP_SEND_INPUT", "REQ_SEND_OUTPUT", "REP_SEND_OUTPUT"};
 
-    const char *STR_RESULT[] = {"SUCCESS", "RETRY", "FAIL", "UNKNOWN"};
+    const char* STR_RESULT[] = {"SUCCESS", "RETRY", "FAIL", "UNKNOWN"};
 
     printf("> PACKET ==================================\n");
     printf("\nRaw:\n");
@@ -1016,7 +1118,7 @@ class packet_parser {
       return false;
     }
 
-    uint8_t *ptr = rx_buf;
+    uint8_t* ptr = rx_buf;
     size_ = bytes_to_u16(ptr);
     ptr += sizeof(uint16_t);
 
@@ -1118,17 +1220,17 @@ class packet_parser {
 
 class msg_serializer {
  public:
-  virtual void serialize(uint8_t *buffer, size_t *buffer_size) = 0;
-  virtual bool deserialize(uint8_t *buffer, const size_t buffer_size) = 0;
+  virtual void serialize(uint8_t* buffer, size_t* buffer_size) = 0;
+  virtual bool deserialize(uint8_t* buffer, const size_t buffer_size) = 0;
 };
 
 // Send and Receive fragmented data packets
 // -----------------------------------------------------------------------------
 
 bool rpc_send_msg(const uint16_t method, uint8_t cmd_req, const uint8_t cmd_rep,
-                  std::atomic<bool> &keep_running, socket_transceiver *conn,
-                  const SOCKET socket_id, packet_builder &tx, packet_parser &rx,
-                  rpc_frag &frag) {
+                  std::atomic<bool>& keep_running, socket_transceiver* conn,
+                  const SOCKET socket_id, packet_builder& tx, packet_parser& rx,
+                  rpc_frag& frag) {
   const size_t max_part_size = cfg::packet_buffer_size - 100;
 
   size_t file_pos = 0;
@@ -1238,9 +1340,9 @@ bool rpc_send_msg(const uint16_t method, uint8_t cmd_req, const uint8_t cmd_rep,
 }
 
 bool rpc_recv_msg(const uint16_t method, uint8_t cmd_req, const uint8_t cmd_rep,
-                  std::atomic<bool> &keep_running, socket_transceiver *conn,
-                  SOCKET socket_id, packet_builder &tx, packet_parser &rx,
-                  rpc_frag &frag) {
+                  std::atomic<bool>& keep_running, socket_transceiver* conn,
+                  SOCKET socket_id, packet_builder& tx, packet_parser& rx,
+                  rpc_frag& frag) {
   int rx_tries = 5;
   frag.reset();
 
@@ -1347,7 +1449,7 @@ bool rpc_recv_msg(const uint16_t method, uint8_t cmd_req, const uint8_t cmd_rep,
 template <typename input_message_type, typename output_message_type>
 class rpc_server {
  public:
-  rpc_server(const char *address, const uint16_t port,
+  rpc_server(const char* address, const uint16_t port,
              const size_t max_msg_buf_size = cfg::msg_buffer_size)
       : keep_running_(false), frag_(max_msg_buf_size) {
     conn_ = new tcp_server(address, port);
@@ -1362,8 +1464,7 @@ class rpc_server {
 
   void register_method(
       const uint16_t method,
-      std::function<void(input_message_type *, output_message_type *)>
-          callback) {
+      std::function<void(input_message_type*, output_message_type*)> callback) {
     callbacks_[method] = callback;
   }
 
@@ -1389,6 +1490,7 @@ class rpc_server {
 
       conn_info client;
       while (conn_->is_active() && keep_running_) {
+        printf("waiting client....\n");
         ret_accept res = conn_->try_accept(client, cfg::timeout_accept);
         if (res == RET_ACCEPT_FAIL && keep_running_ == false) {
           break;
@@ -1406,7 +1508,7 @@ class rpc_server {
   }
 
  private:
-  void client_loop(const conn_info &client) {
+  void client_loop(const conn_info& client) {
     while (keep_running_ && conn_->is_active()) {
       rx_.rx_size = 9;
 
@@ -1449,13 +1551,13 @@ class rpc_server {
         if (rpc_recv_msg(method, command::REQ_SEND_INPUT,
                          command::REP_SEND_INPUT, keep_running_, conn_,
                          client.socket_id, tx_, rx_, frag_)) {
-          reinterpret_cast<msg_serializer *>(&input_param)
+          reinterpret_cast<msg_serializer*>(&input_param)
               ->deserialize(frag_.buffer, frag_.buffer_size);
 
           callbacks_[method](&input_param, &output_param);
 
           frag_.buffer_size = frag_.max_size;
-          reinterpret_cast<msg_serializer *>(&output_param)
+          reinterpret_cast<msg_serializer*>(&output_param)
               ->serialize(frag_.buffer, &frag_.buffer_size);
 
           rpc_send_msg(method, command::REQ_SEND_INPUT, command::REP_SEND_INPUT,
@@ -1473,11 +1575,11 @@ class rpc_server {
 
   // class attributes
 
-  std::unordered_map<uint16_t, std::function<void(input_message_type *,
-                                                  output_message_type *)>>
+  std::unordered_map<
+      uint16_t, std::function<void(input_message_type*, output_message_type*)>>
       callbacks_;
   std::atomic<bool> keep_running_;
-  tcp_server *conn_;
+  tcp_server* conn_;
   packet_builder tx_;
   packet_parser rx_;
   rpc_frag frag_;
@@ -1488,7 +1590,7 @@ class rpc_server {
 
 class rpc_client {
  public:
-  rpc_client(const char *address, const uint16_t port,
+  rpc_client(const char* address, const uint16_t port,
              const size_t max_msg_buf_size = cfg::msg_buffer_size)
       : keep_running_(false), frag_(max_msg_buf_size) {
     conn_ = new tcp_client(address, port);
@@ -1522,8 +1624,8 @@ class rpc_client {
 
   bool is_active() { return conn_->is_active(); }
 
-  bool execute(const uint16_t method, msg_serializer *input,
-               msg_serializer *output) {
+  bool execute(const uint16_t method, msg_serializer* input,
+               msg_serializer* output) {
     if (!conn_->is_active()) {
       fprintf(stderr, "[rpc_client] connection is not active\n");
       return false;
@@ -1603,7 +1705,7 @@ class rpc_client {
   }
 
   std::atomic<bool> keep_running_;
-  tcp_client *conn_;
+  tcp_client* conn_;
   packet_builder tx_;
   packet_parser rx_;
   rpc_frag frag_;
@@ -1615,7 +1717,7 @@ class rpc_client {
 template <typename input_message_type, typename output_message_type>
 class rpc_server_single {
  public:
-  rpc_server_single(const char *address, const uint16_t port,
+  rpc_server_single(const char* address, const uint16_t port,
                     const size_t max_msg_buf_size = cfg::msg_buffer_size)
       : method_(0x0000), keep_running_(false), frag_(max_msg_buf_size) {
     conn_ = new tcp_server(address, port);
@@ -1629,8 +1731,7 @@ class rpc_server_single {
   }
 
   void register_method(
-      std::function<void(input_message_type *, output_message_type *)>
-          callback) {
+      std::function<void(input_message_type*, output_message_type*)> callback) {
     callback_ = callback;
   }
 
@@ -1668,7 +1769,7 @@ class rpc_server_single {
   }
 
  private:
-  void client_loop(const conn_info &client) {
+  void client_loop(const conn_info& client) {
     input_message_type input_param;
     output_message_type output_param;
 
@@ -1676,13 +1777,13 @@ class rpc_server_single {
       if (rpc_recv_msg(method_, command::REQ_SEND_INPUT,
                        command::REP_SEND_INPUT, keep_running_, conn_,
                        client.socket_id, tx_, rx_, frag_)) {
-        reinterpret_cast<msg_serializer *>(&input_param)
+        reinterpret_cast<msg_serializer*>(&input_param)
             ->deserialize(frag_.buffer, frag_.buffer_size);
 
         callback_(&input_param, &output_param);
 
         frag_.buffer_size = frag_.max_size;
-        reinterpret_cast<msg_serializer *>(&output_param)
+        reinterpret_cast<msg_serializer*>(&output_param)
             ->serialize(frag_.buffer, &frag_.buffer_size);
 
         rpc_send_msg(method_, command::REQ_SEND_INPUT, command::REP_SEND_INPUT,
@@ -1695,8 +1796,8 @@ class rpc_server_single {
 
   uint16_t method_;
   std::atomic<bool> keep_running_;
-  std::function<void(input_message_type *, output_message_type *)> callback_;
-  tcp_server *conn_;
+  std::function<void(input_message_type*, output_message_type*)> callback_;
+  tcp_server* conn_;
   packet_builder tx_;
   packet_parser rx_;
   rpc_frag frag_;
@@ -1708,7 +1809,7 @@ class rpc_server_single {
 template <typename input_message_type, typename output_message_type>
 class rpc_client_single {
  public:
-  rpc_client_single(const char *address, const uint16_t port,
+  rpc_client_single(const char* address, const uint16_t port,
                     const size_t max_msg_buf_size = cfg::msg_buffer_size)
       : keep_running_(false), frag_(max_msg_buf_size) {
     conn_ = new tcp_client(address, port);
@@ -1742,14 +1843,14 @@ class rpc_client_single {
 
   bool is_active() { return conn_->is_active(); }
 
-  bool execute(input_message_type *input, output_message_type *output) {
+  bool execute(input_message_type* input, output_message_type* output) {
     if (!conn_->is_active()) {
       fprintf(stderr, "[rpc_client_single] connection is not active\n");
       return false;
     }
 
-    reinterpret_cast<msg_serializer *>(input)->serialize(frag_.buffer,
-                                                         &frag_.buffer_size);
+    reinterpret_cast<msg_serializer*>(input)->serialize(frag_.buffer,
+                                                        &frag_.buffer_size);
 
     if (!rpc_send_msg(0x0000, command::REQ_SEND_INPUT, command::REP_SEND_INPUT,
                       keep_running_, conn_, 0, tx_, rx_, frag_)) {
@@ -1763,7 +1864,7 @@ class rpc_client_single {
       return false;
     }
 
-    if (!reinterpret_cast<msg_serializer *>(output)->deserialize(
+    if (!reinterpret_cast<msg_serializer*>(output)->deserialize(
             frag_.buffer, frag_.buffer_size)) {
       printf("[rpc_client_single] fail to deserialize\n");
       return false;
@@ -1774,7 +1875,7 @@ class rpc_client_single {
 
  private:
   std::atomic<bool> keep_running_;
-  tcp_client *conn_;
+  tcp_client* conn_;
   packet_builder tx_;
   packet_parser rx_;
   rpc_frag frag_;
@@ -1786,7 +1887,7 @@ class rpc_client_single {
 template <typename message_type>
 class subscriber {
  public:
-  subscriber(const char *address, const uint16_t port,
+  subscriber(const char* address, const uint16_t port,
              const size_t max_msg_buf_size = cfg::msg_buffer_size)
       : method_(0), keep_running_(false), frag_(max_msg_buf_size) {
     conn_ = new tcp_server(address, port);
@@ -1799,7 +1900,7 @@ class subscriber {
     }
   }
 
-  void register_callback(std::function<void(message_type *)> callback) {
+  void register_callback(std::function<void(message_type*)> callback) {
     callback_ = callback;
   }
 
@@ -1830,22 +1931,27 @@ class subscriber {
         printf("\n");
 
         client_loop(client);
+        conn_->disconnect_client(client);
       }
     }
   }
 
  private:
-  void client_loop(const conn_info &client) {
+  void client_loop(const conn_info& client) {
     message_type input_param;
     while (keep_running_ && conn_->is_active()) {
       if (rpc_recv_msg(method_, command::REQ_SEND_INPUT,
                        command::REP_SEND_INPUT, keep_running_, conn_,
                        client.socket_id, tx_, rx_, frag_)) {
-        reinterpret_cast<msg_serializer *>(&input_param)
+        reinterpret_cast<msg_serializer*>(&input_param)
             ->deserialize(frag_.buffer, frag_.buffer_size);
 
         if (callback_) {
           callback_(&input_param);
+        }
+      } else {
+        if (!conn_->is_socket_active(client.socket_id)) {
+          break;
         }
       }
     }
@@ -1853,8 +1959,8 @@ class subscriber {
 
   const uint16_t method_;
   std::atomic<bool> keep_running_;
-  std::function<void(message_type *)> callback_;
-  tcp_server *conn_;
+  std::function<void(message_type*)> callback_;
+  tcp_server* conn_;
   packet_builder tx_;
   packet_parser rx_;
   rpc_frag frag_;
@@ -1866,7 +1972,7 @@ class subscriber {
 template <typename message_type>
 class publisher {
  public:
-  publisher(const char *address, const uint16_t port,
+  publisher(const char* address, const uint16_t port,
             const size_t max_msg_buf_size = cfg::msg_buffer_size)
       : keep_running_(false), frag_(max_msg_buf_size) {
     conn_ = new tcp_client(address, port);
@@ -1899,14 +2005,14 @@ class publisher {
 
   bool is_active() { return conn_->is_active(); }
 
-  bool publish(message_type *input) {
+  bool publish(message_type* input) {
     if (!conn_->is_active()) {
       fprintf(stderr, "[publisher] connection is not active\n");
       return false;
     }
 
-    reinterpret_cast<msg_serializer *>(input)->serialize(frag_.buffer,
-                                                         &frag_.buffer_size);
+    reinterpret_cast<msg_serializer*>(input)->serialize(frag_.buffer,
+                                                        &frag_.buffer_size);
 
     if (!rpc_send_msg(0, command::REQ_SEND_INPUT, command::REP_SEND_INPUT,
                       keep_running_, conn_, 0, tx_, rx_, frag_)) {
@@ -1919,7 +2025,7 @@ class publisher {
 
  private:
   std::atomic<bool> keep_running_;
-  tcp_client *conn_;
+  tcp_client* conn_;
   packet_builder tx_;
   packet_parser rx_;
   rpc_frag frag_;
