@@ -4,7 +4,7 @@ Simple, lightweight, cross-platform, header-only, single header RPC written in C
 
 The main goal of this project is to provide an introduction about network communication, especially TCP sockets, by implementing a simple remote procedure call (RPC) library for cross-platform (Linux :penguin:, macOS, Windows).
 
-Besides this educational purpose, it can be used as interface to communicate with constrainted hardware (embedded systems: Raspyberry Pi, low-power CPU, and MPSoC FPGA), where installing a big RPC library is not ideal.
+Besides this educational purpose, it can be used as interface to communicate with constrainted hardware (embedded systems: Raspyberry Pi, low-power CPUs, and MPSoC FPGA), where installing a big RPC library is not ideal.
 
 Another point is to provide a model like :robot: ROS nodes communication, I love ROS2 :revolving_hearts:, but sometimes I just want a simple publisher/subscriber without installing an entire distribution.
 
@@ -391,17 +391,21 @@ Therefore,
 - the server/subscriber do not support multiple clients 
 - the server is not prepared to execute multiple methods simultaneously
 
-## TODO
+## TODO / Roadmap
 
 To be done in the future:
 
-- [ ] Example: remote image processing
-- [ ] rpc_server: support methods with different input and output messages
+- [x] Example: remote image processing
 - [ ] Python Implementation
-- [ ] C# Implementation (for Unity)
-- [ ] Documentation: Protocol Format, Sequence Diagram
-- [ ] Server: multithreading to handle multiple clients
+- [ ] C# Implementation (for Unity 3D)
+- [ ] Example: multi-node multi-process system with publisher and subscriber
 - [ ] Support UDP sockets
+- [ ] Support Shared Memory
+- [ ] Multi-node application
+- [ ] Example: audio streaming
+- [ ] Documentation: Protocol Format, Sequence Diagram
+- [ ] rpc_server: support methods with different input and output messages
+- [ ] Server: multithreading to handle multiple clients
 
 ## d'Arc Framework
 

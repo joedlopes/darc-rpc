@@ -819,6 +819,22 @@ class tcp_server : public socket_transceiver {
   virtual bool is_socket_active(SOCKET socket_id) override {
     for (size_t i = 0; i < clients_.size(); i++) {
       if (clients_[i].socket_id == socket_id) {
+#ifdef _WIN32
+        WSAPOLLFD fds{};
+        fds.fd = socket_id;
+        fds.events = POLLERR;
+        fds.revents = 0;
+        int ready = WSAPoll(&fds, 1, 1);
+#else
+        struct pollfd fds;
+        fds.fd = socket_id;
+        fds.events = POLLERR;
+        fds.revents = 0;
+        int ready = poll(&fds, 1, 1);
+#endif
+        if (ready > 0 && (fds.revents & POLLERR)) {
+          return false;
+        }
         return true;
       }
     }
@@ -1915,6 +1931,7 @@ class subscriber {
         printf("\n");
 
         client_loop(client);
+        conn_->disconnect_client(client);
       }
     }
   }
@@ -1931,6 +1948,10 @@ class subscriber {
 
         if (callback_) {
           callback_(&input_param);
+        }
+      } else {
+        if (!conn_->is_socket_active(client.socket_id)) {
+          break;
         }
       }
     }
